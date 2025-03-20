@@ -1,8 +1,14 @@
 console.log("Processo Principal")
- 
+
 // importação dos recursos do frame work
-const { app, BrowserWindow, nativeTheme, Menu, shell } = require('electron/main')
- 
+const { app, BrowserWindow, nativeTheme, Menu, shell, ipcMain } = require('electron/main')
+
+// Ativação do preload.js (importação do path)
+const path = require('node:path')
+
+// Importação dos metodos conectar e desconectar (módulo de conexão)
+const { conectar, desconectar } = require('./database.js')
+
 // janela principal
 let win
 const createWindow = () => {
@@ -15,17 +21,20 @@ const createWindow = () => {
         //resizable: false,
         //minimizable: false,
         //closable: false,
-        //autoHideMenuBar: true
+        //autoHideMenuBar: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js')
+        }
     })
- 
+
     // Carregar o menu personalização
     // Antes importar o recurso menu
     Menu.setApplicationMenu(Menu.buildFromTemplate(template))
- 
+
     // carregar o documento html
     win.loadFile('./src/views/index.html')
 }
- 
+
 // Janela Sobre
 function aboutWindow() {
     nativeTheme.themeSource = 'light'
@@ -47,11 +56,26 @@ function aboutWindow() {
     }
     about.loadFile('./src/views/sobre.html')
 }
- 
+
 // inicialização da aplicação (assincronismo)
 app.whenReady().then(() => {
     createWindow()
- 
+
+    // melhor localç para estabelecer a conexão com o banco de dados
+    // No MongoDB e mais eficiente manter uma unica conexão aberta durante todo o tempo de vida do aplicativo
+    // ipcmain.on (receber mensagem)
+    // db-connect (rotulo da mensagem)
+    ipcMain.on('db-connect', async(event) => {
+        // a linha a baixo estabelecer a conexão com o banco de dados
+        await conectar()
+        // enviar a o renderizador uma mensagem para trocar a imagem do icone do status do banco de dados
+        setTimeout(() => {
+            // enviar ao renderizador a mensagem "Conectado"
+            // db-status (ipc - comunicação entre processos - proload.js)
+            event.reply('db-status', "conectado")
+        }, 500) //500ms = 0.5s
+    })
+
     // so ativar a janela principal se nenhuma outra estiver ativa
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -59,38 +83,39 @@ app.whenReady().then(() => {
         }
     })
 })
- 
- 
+
+
 // se o sistema não for mac encerrar a aplicação quando a janela for fechada
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit()
     }
 })
- 
+
+// IMPORTANTE encerrar a conexão com o banco de dados quando a aplicação for encerrada
+app.on('before-quit', async() => {
+    await desconectar()
+})
+
 // Reduzir o verbozidade de tops não criticos (devtools)
 app.commandLine.appendSwitch('log-level', '3')
- 
+
 // template do menu
 const template = [
     {
-        label: 'Cadastro',
+        label: 'Notas',
         submenu: [
             {
-                label: 'Sair',
-                accelerator: 'Alt+F4',
-                click: () => app.quit()
+                label: 'Criar nota',
+                accelerator: 'Ctrl+N',
             },
             {
                 type: 'separator'
             },
-        ]
-    },
-    {
-        label: 'Relatório',
-        submenu:[
             {
-                label: 'Clientes'
+                label: 'Sair',
+                accelerator: 'Alt+F4',
+                click: () => app.quit()
             }
         ]
     },
@@ -127,7 +152,7 @@ const template = [
         submenu: [
             {
                 label: 'Repositorio',
-                click: () => shell.openExternal('https://github.com/guiH0l1/cadastroCliente_electron')
+                click: () => shell.openExternal('https://github.com/PatrickHeiisen/sticknotes.git')
             },
             {
                 label: 'Sobre',
